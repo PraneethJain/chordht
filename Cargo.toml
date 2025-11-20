@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "chord_proto",
+    "chord_node",
+    "chord_monitor",
+    "chord_client",
+]
+resolver = "2"

@@ -1,0 +1,11 @@
+[package]
+name = "chord_client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chord_proto = { path = "../chord_proto" }
+tokio = { version = "1.40", features = ["full"] }
+tonic = "0.12"
+prost = "0.13"
+clap = { version = "4.5", features = ["derive"] }

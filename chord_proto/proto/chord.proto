@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package chord;
+
+service Chord {
+  // Basic Chord Protocol
+  rpc GetSuccessor(Empty) returns (NodeInfo);
+  rpc GetPredecessor(Empty) returns (NodeInfo);
+  rpc FindSuccessor(FindSuccessorRequest) returns (NodeInfo);
+  rpc Notify(NodeInfo) returns (Empty);
+  rpc GetSuccessorList(Empty) returns (SuccessorList);
+
+  // Data Operations
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc TransferKeys(TransferKeysRequest) returns (Empty);
+  rpc Leave(Empty) returns (Empty);
+  rpc Ping(Empty) returns (Empty);
+}
+
+service ChordMonitor { rpc ReportState(NodeState) returns (Empty); }
+
+message Empty {}
+
+message NodeInfo {
+  uint64 id = 1;
+  string address = 2;
+}
+
+message FindSuccessorRequest { uint64 id = 1; }
+
+message SuccessorList { repeated NodeInfo successors = 1; }
+
+message PutRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message PutResponse { bool success = 1; }
+
+message GetRequest { string key = 1; }
+
+message GetResponse {
+  string value = 1;
+  bool found = 2;
+}
+
+message TransferKeysRequest { map<string, string> keys = 1; }
+
+message NodeState {
+  uint64 id = 1;
+  string address = 2;
+  NodeInfo predecessor = 3;
+  repeated NodeInfo successors = 4;
+  repeated NodeInfo finger_table = 5;
+  repeated string stored_keys = 6;
+}
