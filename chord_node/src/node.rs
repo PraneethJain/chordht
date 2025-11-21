@@ -76,7 +76,7 @@ impl Node {
         if Self::is_in_range_inclusive(id, self.id, successor.id) {
             return Ok(successor);
         }
-        drop(state); // Release lock
+        drop(state);
 
         // Get all unique candidates from finger table that are strictly closer to id
         // We want to try the closest ones first.
@@ -101,7 +101,6 @@ impl Node {
                         "Node {}: Failed to contact candidate {} ({}) for id {}: {}",
                         self.id, candidate.id, candidate.address, id, e
                     );
-                    // Continue to next candidate
                 }
             }
         }
@@ -390,7 +389,70 @@ impl Node {
         Ok(())
     }
 
-    // Helper for RPC connection
+    async fn transfer_keys_to_new_predecessor(
+        &self,
+        state: &mut tokio::sync::RwLockWriteGuard<'_, NodeState>,
+        potential_predecessor: &NodeInfo,
+    ) {
+        let mut keys_to_transfer = HashMap::new();
+        let mut keys_to_remove = Vec::new();
+
+        for (k, v) in &state.store {
+            let key_id = hash_addr(k);
+            // Check if key_id is in (old_pred, new_pred]
+            // If key_id is NOT in (new_pred, self], then it belongs to new_pred (or someone else behind).
+
+            if !Self::is_in_range_inclusive(key_id, potential_predecessor.id, self.id) {
+                keys_to_transfer.insert(k.clone(), v.clone());
+                keys_to_remove.push(k.clone());
+            }
+        }
+
+        if !keys_to_transfer.is_empty() {
+            println!(
+                "Node {}: Transferring {} keys to new predecessor {}",
+                self.id,
+                keys_to_transfer.len(),
+                potential_predecessor.id
+            );
+
+            let state_clone = self.state.clone();
+            let target_addr = format!("http://{}", potential_predecessor.address);
+            let keys_to_send = keys_to_transfer;
+            let keys_to_remove_ids = keys_to_remove;
+
+            tokio::spawn(async move {
+                use chord_proto::chord::chord_client::ChordClient;
+                use chord_proto::chord::TransferKeysRequest;
+
+                let mut client = match ChordClient::connect(target_addr).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        println!(
+                            "Failed to connect to new predecessor for key transfer: {}",
+                            e
+                        );
+                        return;
+                    }
+                };
+
+                let request = Request::new(TransferKeysRequest { keys: keys_to_send });
+
+                match client.transfer_keys(request).await {
+                    Ok(_) => {
+                        let mut state = state_clone.write().await;
+                        for k in keys_to_remove_ids {
+                            state.store.remove(&k);
+                        }
+                    }
+                    Err(e) => {
+                        println!("Failed to transfer keys: {}", e);
+                    }
+                }
+            });
+        }
+    }
+
     async fn connect_rpc(
         &self,
         addr: String,
@@ -449,72 +511,8 @@ impl Chord for Node {
             let _old_predecessor = state.predecessor.clone();
             state.predecessor = Some(potential_predecessor.clone());
 
-            // Identify keys to transfer
-            // Keys that belong to new predecessor are those <= potential_predecessor.id
-            // But we only hold keys that are <= self.id.
-            // And previously we held keys > old_predecessor.id (or all if None).
-            // So we transfer keys k where k <= potential_predecessor.id.
-            // We need to be careful about wrapping.
-            // The range we are giving up is (old_predecessor, potential_predecessor].
-            // If old_predecessor is None, we give up (-inf, potential_predecessor].
-
-            let mut keys_to_transfer = HashMap::new();
-            let mut keys_to_remove = Vec::new();
-
-            for (k, v) in &state.store {
-                let key_id = hash_addr(k);
-                // Check if key_id is in (old_pred, new_pred]
-                // If key_id is NOT in (new_pred, self], then it belongs to new_pred (or someone else behind).
-
-                if !Self::is_in_range_inclusive(key_id, potential_predecessor.id, self.id) {
-                    keys_to_transfer.insert(k.clone(), v.clone());
-                    keys_to_remove.push(k.clone());
-                }
-            }
-
-            if !keys_to_transfer.is_empty() {
-                println!(
-                    "Node {}: Transferring {} keys to new predecessor {}",
-                    self.id,
-                    keys_to_transfer.len(),
-                    potential_predecessor.id
-                );
-
-                let state_clone = self.state.clone();
-                let target_addr = format!("http://{}", potential_predecessor.address);
-                let keys_to_send = keys_to_transfer;
-                let keys_to_remove_ids = keys_to_remove;
-
-                tokio::spawn(async move {
-                    use chord_proto::chord::chord_client::ChordClient;
-                    use chord_proto::chord::TransferKeysRequest;
-
-                    let mut client = match ChordClient::connect(target_addr).await {
-                        Ok(c) => c,
-                        Err(e) => {
-                            println!(
-                                "Failed to connect to new predecessor for key transfer: {}",
-                                e
-                            );
-                            return;
-                        }
-                    };
-
-                    let request = Request::new(TransferKeysRequest { keys: keys_to_send });
-
-                    match client.transfer_keys(request).await {
-                        Ok(_) => {
-                            let mut state = state_clone.write().await;
-                            for k in keys_to_remove_ids {
-                                state.store.remove(&k);
-                            }
-                        }
-                        Err(e) => {
-                            println!("Failed to transfer keys: {}", e);
-                        }
-                    }
-                });
-            }
+            self.transfer_keys_to_new_predecessor(&mut state, &potential_predecessor)
+                .await;
         }
 
         Ok(Response::new(Empty {}))
