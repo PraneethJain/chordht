@@ -194,7 +194,10 @@ impl Node {
 
                 if should_update {
                     let mut state = self.state.write().await;
-                    state.successor_list[0] = x;
+                    // Ensure successor hasn't changed while we were waiting for RPC
+                    if state.successor_list[0].id == successor.id {
+                        state.successor_list[0] = x;
+                    }
                 }
             }
             Err(e) => {
@@ -477,14 +480,10 @@ impl Chord for Node {
                     potential_predecessor.id
                 );
 
-                // We can't do async RPC while holding the write lock easily if we want to be safe/clean.
-                // For this implementation, let's remove now and spawn a task to send.
-
-                for k in keys_to_remove {
-                    state.store.remove(&k);
-                }
-
+                let state_clone = self.state.clone();
                 let target_addr = format!("http://{}", potential_predecessor.address);
+                let keys_to_send = keys_to_transfer;
+                let keys_to_remove_ids = keys_to_remove;
 
                 tokio::spawn(async move {
                     use chord_proto::chord::chord_client::ChordClient;
@@ -501,11 +500,18 @@ impl Chord for Node {
                         }
                     };
 
-                    let request = Request::new(TransferKeysRequest {
-                        keys: keys_to_transfer,
-                    });
-                    if let Err(e) = client.transfer_keys(request).await {
-                        println!("Failed to transfer keys: {}", e);
+                    let request = Request::new(TransferKeysRequest { keys: keys_to_send });
+
+                    match client.transfer_keys(request).await {
+                        Ok(_) => {
+                            let mut state = state_clone.write().await;
+                            for k in keys_to_remove_ids {
+                                state.store.remove(&k);
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to transfer keys: {}", e);
+                        }
                     }
                 });
             }
