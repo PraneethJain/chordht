@@ -263,20 +263,67 @@ impl Node {
     }
 
     pub async fn check_predecessor(&self) {
-        let predecessor = {
-            let state = self.state.read().await;
-            state.predecessor.clone()
-        };
-
-        if let Some(pred) = predecessor {
-            let pred_addr = format!("http://{}", pred.address);
-            // Try to ping
-            match self.ping_rpc(pred_addr).await {
-                Ok(_) => {}
+        let mut state = self.state.write().await;
+        if let Some(predecessor) = &state.predecessor {
+            let endpoint = format!("http://{}", predecessor.address);
+            let mut client = match self.connect_rpc(endpoint).await {
+                Ok(c) => c,
                 Err(_) => {
-                    // Predecessor failed
-                    let mut state = self.state.write().await;
                     state.predecessor = None;
+                    return;
+                }
+            };
+
+            if client.ping(Request::new(Empty {})).await.is_err() {
+                state.predecessor = None;
+            }
+        }
+    }
+
+    pub async fn maintain_replication(&self) {
+        let state = self.state.read().await;
+        let store = state.store.clone();
+        let successor_list = state.successor_list.clone();
+        let predecessor = state.predecessor.clone();
+        drop(state);
+
+        let pred_id = predecessor.map(|p| p.id).unwrap_or(self.id);
+
+        let replication_count = 2;
+        let successors_to_replicate: Vec<_> =
+            successor_list.into_iter().take(replication_count).collect();
+
+        if successors_to_replicate.is_empty() {
+            return;
+        }
+
+        for (key, value) in store {
+            let key_id = hash_addr(&key);
+
+            // Check if we are primary
+            let is_primary = Self::is_in_range_inclusive(key_id, pred_id, self.id);
+
+            if is_primary {
+                for succ in &successors_to_replicate {
+                    let endpoint = format!("http://{}", succ.address);
+                    let req = PutRequest {
+                        key: key.clone(),
+                        value: value.clone(),
+                    };
+
+                    tokio::spawn(async move {
+                        use chord_proto::chord::chord_client::ChordClient;
+                        match ChordClient::connect(endpoint).await {
+                            Ok(mut client) => {
+                                if client.replicate(Request::new(req)).await.is_err() {
+                                    // Silently fail for maintenance to avoid log spam
+                                }
+                            }
+                            Err(_) => {
+                                // Silently fail
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -545,7 +592,45 @@ impl Chord for Node {
         if successor.id == self.id {
             println!("Node {}: Storing key '{}' locally", self.id, req.key);
             let mut state = self.state.write().await;
-            state.store.insert(req.key, req.value);
+            state.store.insert(req.key.clone(), req.value.clone());
+
+            let successor_list = state.successor_list.clone();
+            drop(state);
+
+            let replication_count = 2;
+            let successors_to_replicate: Vec<_> =
+                successor_list.into_iter().take(replication_count).collect();
+
+            for succ in successors_to_replicate {
+                println!(
+                    "Node {}: Replicating key '{}' to {}",
+                    self.id, req.key, succ.id
+                );
+                let endpoint = format!("http://{}", succ.address);
+                let req_clone = req.clone();
+                let self_id = self.id;
+
+                tokio::spawn(async move {
+                    use chord_proto::chord::chord_client::ChordClient;
+                    match ChordClient::connect(endpoint).await {
+                        Ok(mut client) => {
+                            if let Err(e) = client.replicate(Request::new(req_clone)).await {
+                                println!(
+                                    "Node {}: Failed to replicate to {}: {}",
+                                    self_id, succ.id, e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            println!(
+                                "Node {}: Failed to connect to replica {}: {}",
+                                self_id, succ.id, e
+                            );
+                        }
+                    }
+                });
+            }
+
             Ok(Response::new(PutResponse { success: true }))
         } else {
             println!(
@@ -559,6 +644,13 @@ impl Chord for Node {
         }
     }
 
+    async fn replicate(&self, request: Request<PutRequest>) -> Result<Response<Empty>, Status> {
+        let req = request.into_inner();
+        println!("Node {}: Replicating key '{}'", self.id, req.key);
+        let mut state = self.state.write().await;
+        state.store.insert(req.key, req.value);
+        Ok(Response::new(Empty {}))
+    }
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let req = request.into_inner();
         let key_id = hash_addr(&req.key);

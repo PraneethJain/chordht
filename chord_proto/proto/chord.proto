@@ -12,6 +12,7 @@ service Chord {
 
   // Data Operations
   rpc Put(PutRequest) returns (PutResponse);
+  rpc Replicate(PutRequest) returns (Empty);
   rpc Get(GetRequest) returns (GetResponse);
   rpc TransferKeys(TransferKeysRequest) returns (Empty);
   rpc Leave(Empty) returns (Empty);

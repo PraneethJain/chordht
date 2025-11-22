@@ -142,7 +142,7 @@ async fn test_large_chord_ring() {
     println!("\n✓ All Put/Get operations successful!");
 
     println!("\nVerifying key distribution...");
-    let mut total_keys = 0;
+    let mut stored_keys = std::collections::BTreeSet::new();
     let mut nodes_with_keys = 0;
 
     for (i, node) in nodes.iter().enumerate() {
@@ -158,9 +158,10 @@ async fn test_large_chord_ring() {
                 state.store.keys().collect::<Vec<_>>()
             );
         }
-        total_keys += num_keys;
+        stored_keys.extend(state.store.keys().cloned());
     }
 
+    let total_keys = stored_keys.len();
     assert_eq!(total_keys, test_cases.len(), "Total keys mismatch");
     println!(
         "✓ Total keys: {}, stored across {} nodes",

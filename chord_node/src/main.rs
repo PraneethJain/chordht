@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             node_clone.stabilize().await;
             node_clone.fix_fingers().await;
             node_clone.check_predecessor().await;
+            node_clone.maintain_replication().await;
 
             if let Some(ref m_addr) = monitor_addr {
                 node_clone.report_to_monitor(m_addr.clone()).await;

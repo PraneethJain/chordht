@@ -8,9 +8,9 @@ use common::{stabilize_ring, start_node};
 
 #[tokio::test]
 async fn test_chord_ring_formation_and_routing() {
-    let addr1 = "127.0.0.1:50001".to_string();
-    let addr2 = "127.0.0.1:50002".to_string();
-    let addr3 = "127.0.0.1:50003".to_string();
+    let addr1 = "127.0.0.1:60001".to_string();
+    let addr2 = "127.0.0.1:60002".to_string();
+    let addr3 = "127.0.0.1:60003".to_string();
 
     let id1 = hash_addr(&addr1);
     let id2 = hash_addr(&addr2);
