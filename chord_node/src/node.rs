@@ -3,6 +3,7 @@ use chord_proto::chord::{
     NodeState as ProtoNodeState, PutRequest, PutResponse, SuccessorList, TransferKeysRequest,
 };
 use chord_proto::hash_addr;
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -99,7 +100,7 @@ impl Node {
             match self.find_successor_rpc(client_addr, id).await {
                 Ok(info) => return Ok(info),
                 Err(e) => {
-                    println!(
+                    warn!(
                         "Node {}: Failed to contact candidate {} ({}) for id {}: {}",
                         self.id, candidate.id, candidate.address, id, e
                     );
@@ -123,14 +124,14 @@ impl Node {
             }
 
             let client_addr = format!("http://{}", succ.address);
-            println!(
+            debug!(
                 "Node {}: Fallback: trying successor {} for id {}",
                 self.id, succ.id, id
             );
             match self.find_successor_rpc(client_addr, id).await {
                 Ok(info) => return Ok(info),
                 Err(e) => {
-                    println!(
+                    warn!(
                         "Node {}: Fallback successor {} failed: {}",
                         self.id, succ.id, e
                     );
@@ -207,11 +208,11 @@ impl Node {
                 if e.code() == tonic::Code::NotFound {
                     // Successor is alive but has no predecessor yet, continue normally
                 } else {
-                    println!("Node {}: Successor {} failed: {}", self.id, successor.id, e);
+                    warn!("Node {}: Successor {} failed: {}", self.id, successor.id, e);
                     // Successor failed. If we have more successors in the list, promote the next one.
                     let mut state = self.state.write().await;
                     if state.successor_list.len() > 1 {
-                        println!(
+                        info!(
                             "Node {}: Removing dead successor {}, promoting next",
                             self.id, successor.id
                         );
@@ -238,7 +239,7 @@ impl Node {
         };
 
         if let Err(e) = self.notify_rpc(successor_addr.clone(), me).await {
-            println!(
+            warn!(
                 "Node {}: Failed to notify successor {}: {}",
                 self.id, successor.id, e
             );
@@ -318,11 +319,14 @@ impl Node {
                         match ChordClient::connect(endpoint).await {
                             Ok(mut client) => {
                                 if client.replicate(Request::new(req)).await.is_err() {
-                                    // Silently fail for maintenance to avoid log spam
+                                    debug!("Node: Failed to replicate during maintenance");
                                 }
                             }
-                            Err(_) => {
-                                // Silently fail
+                            Err(e) => {
+                                debug!(
+                                    "Node: Failed to connect for replication maintenance: {}",
+                                    e
+                                );
                             }
                         }
                     });
@@ -412,7 +416,7 @@ impl Node {
 
         if let Some(successor) = successor {
             if successor.id != self.id {
-                println!(
+                info!(
                     "Node {}: Transferring {} keys to successor {} before leaving",
                     self.id,
                     store.len(),
@@ -420,7 +424,7 @@ impl Node {
                 );
                 let successor_addr = format!("http://{}", successor.address);
                 if let Err(e) = self.transfer_keys_rpc(successor_addr, store).await {
-                    println!("Node {}: Failed to transfer keys on leave: {}", self.id, e);
+                    error!("Node {}: Failed to transfer keys on leave: {}", self.id, e);
                 }
             }
         }
@@ -458,7 +462,7 @@ impl Node {
         }
 
         if !keys_to_transfer.is_empty() {
-            println!(
+            info!(
                 "Node {}: Transferring {} keys to new predecessor {}",
                 self.id,
                 keys_to_transfer.len(),
@@ -477,7 +481,7 @@ impl Node {
                 let mut client = match ChordClient::connect(target_addr).await {
                     Ok(c) => c,
                     Err(e) => {
-                        println!(
+                        error!(
                             "Failed to connect to new predecessor for key transfer: {}",
                             e
                         );
@@ -495,7 +499,7 @@ impl Node {
                         }
                     }
                     Err(e) => {
-                        println!("Failed to transfer keys: {}", e);
+                        error!("Failed to transfer keys: {}", e);
                     }
                 }
             });
@@ -580,19 +584,19 @@ impl Chord for Node {
     async fn put(&self, request: Request<PutRequest>) -> Result<Response<PutResponse>, Status> {
         let req = request.into_inner();
         let key_id = hash_addr(&req.key);
-        println!(
+        debug!(
             "Node {}: Received Put request for key '{}' (ID: {})",
             self.id, req.key, key_id
         );
 
         let successor = self.find_successor_internal(key_id).await?;
-        println!(
+        debug!(
             "Node {}: Successor for key '{}' is {}",
             self.id, req.key, successor.id
         );
 
         if successor.id == self.id {
-            println!("Node {}: Storing key '{}' locally", self.id, req.key);
+            info!("Node {}: Storing key '{}' locally", self.id, req.key);
             let mut state = self.state.write().await;
             state.store.insert(req.key.clone(), req.value.clone());
 
@@ -604,7 +608,7 @@ impl Chord for Node {
                 successor_list.into_iter().take(replication_count).collect();
 
             for succ in successors_to_replicate {
-                println!(
+                debug!(
                     "Node {}: Replicating key '{}' to {}",
                     self.id, req.key, succ.id
                 );
@@ -617,14 +621,14 @@ impl Chord for Node {
                     match ChordClient::connect(endpoint).await {
                         Ok(mut client) => {
                             if let Err(e) = client.replicate(Request::new(req_clone)).await {
-                                println!(
+                                warn!(
                                     "Node {}: Failed to replicate to {}: {}",
                                     self_id, succ.id, e
                                 );
                             }
                         }
                         Err(e) => {
-                            println!(
+                            warn!(
                                 "Node {}: Failed to connect to replica {}: {}",
                                 self_id, succ.id, e
                             );
@@ -635,7 +639,7 @@ impl Chord for Node {
 
             Ok(Response::new(PutResponse { success: true }))
         } else {
-            println!(
+            debug!(
                 "Node {}: Forwarding Put for key '{}' to {}",
                 self.id, req.key, successor.id
             );
@@ -648,7 +652,7 @@ impl Chord for Node {
 
     async fn replicate(&self, request: Request<PutRequest>) -> Result<Response<Empty>, Status> {
         let req = request.into_inner();
-        println!("Node {}: Replicating key '{}'", self.id, req.key);
+        debug!("Node {}: Replicating key '{}'", self.id, req.key);
         let mut state = self.state.write().await;
         state.store.insert(req.key, req.value);
         Ok(Response::new(Empty {}))
@@ -656,35 +660,35 @@ impl Chord for Node {
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let req = request.into_inner();
         let key_id = hash_addr(&req.key);
-        println!(
+        debug!(
             "Node {}: Received Get request for key '{}' (ID: {})",
             self.id, req.key, key_id
         );
 
         let successor = self.find_successor_internal(key_id).await?;
-        println!(
+        debug!(
             "Node {}: Successor for key '{}' is {}",
             self.id, req.key, successor.id
         );
 
         if successor.id == self.id {
-            println!("Node {}: Looking up key '{}' locally", self.id, req.key);
+            debug!("Node {}: Looking up key '{}' locally", self.id, req.key);
             let state = self.state.read().await;
             if let Some(value) = state.store.get(&req.key) {
-                println!("Node {}: Found key '{}'", self.id, req.key);
+                info!("Node {}: Found key '{}'", self.id, req.key);
                 Ok(Response::new(GetResponse {
                     value: value.clone(),
                     found: true,
                 }))
             } else {
-                println!("Node {}: Key '{}' not found", self.id, req.key);
+                info!("Node {}: Key '{}' not found", self.id, req.key);
                 Ok(Response::new(GetResponse {
                     value: "".to_string(),
                     found: false,
                 }))
             }
         } else {
-            println!(
+            debug!(
                 "Node {}: Forwarding Get for key '{}' to {}",
                 self.id, req.key, successor.id
             );
@@ -704,7 +708,7 @@ impl Chord for Node {
         request: Request<TransferKeysRequest>,
     ) -> Result<Response<Empty>, Status> {
         let req = request.into_inner();
-        println!("Node {}: Received {} keys", self.id, req.keys.len());
+        info!("Node {}: Received {} keys", self.id, req.keys.len());
         let mut state = self.state.write().await;
         for (k, v) in req.keys {
             state.store.insert(k, v);
@@ -713,7 +717,7 @@ impl Chord for Node {
     }
 
     async fn leave(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
-        println!("Node {}: Received Leave request", self.id);
+        info!("Node {}: Received Leave request", self.id);
         self.leave_network().await;
 
         // Spawn a task to exit the process after a short delay to allow the response to be sent
