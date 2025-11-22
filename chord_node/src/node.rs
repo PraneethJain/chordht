@@ -8,7 +8,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
-const FINGER_TABLE_SIZE: usize = 64;
+use crate::constants::{
+    FINGER_TABLE_SIZE, LEAVE_EXIT_DELAY_MS, REPLICATION_COUNT, SUCCESSOR_LIST_LIMIT,
+};
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -289,7 +291,7 @@ impl Node {
 
         let pred_id = predecessor.map(|p| p.id).unwrap_or(self.id);
 
-        let replication_count = 2;
+        let replication_count = REPLICATION_COUNT;
         let successors_to_replicate: Vec<_> =
             successor_list.into_iter().take(replication_count).collect();
 
@@ -336,9 +338,9 @@ impl Node {
                 // New successor list = successor + successor.successors (trimmed)
                 let mut new_list = vec![state.successor_list[0].clone()];
                 new_list.extend(list.successors);
-                if new_list.len() > 5 {
+                if new_list.len() > SUCCESSOR_LIST_LIMIT {
                     // Keep k successors
-                    new_list.truncate(5);
+                    new_list.truncate(SUCCESSOR_LIST_LIMIT);
                 }
                 state.successor_list = new_list;
                 Ok(())
@@ -597,7 +599,7 @@ impl Chord for Node {
             let successor_list = state.successor_list.clone();
             drop(state);
 
-            let replication_count = 2;
+            let replication_count = REPLICATION_COUNT;
             let successors_to_replicate: Vec<_> =
                 successor_list.into_iter().take(replication_count).collect();
 
@@ -716,7 +718,7 @@ impl Chord for Node {
 
         // Spawn a task to exit the process after a short delay to allow the response to be sent
         tokio::spawn(async {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(LEAVE_EXIT_DELAY_MS)).await;
             std::process::exit(0);
         });
 

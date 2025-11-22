@@ -12,7 +12,7 @@ use common::{stabilize_ring, start_node};
 #[tokio::test]
 async fn test_key_transfer_on_join_and_leave() {
     let port_a = 15000;
-    let addr_a = format!("127.0.0.1:{}", port_a);
+    let addr_a = format!("{}:{}", chord_node::constants::LOCALHOST, port_a);
     let id_a = hash_addr(&addr_a);
     let (node_a, _h1) = start_node(id_a, addr_a.clone()).await;
     println!("Node A started at {} with ID {}", addr_a, node_a.id);
@@ -45,12 +45,12 @@ async fn test_key_transfer_on_join_and_leave() {
         assert!(state.store.contains_key(key));
     }
 
-    let mut addr_b = format!("127.0.0.1:{}", 15001);
+    let mut addr_b = format!("{}:{}", chord_node::constants::LOCALHOST, 15001);
     let mut id_b = hash_addr(&addr_b);
 
     let mut found = false;
     for p in 15001..16000 {
-        let a = format!("127.0.0.1:{}", p);
+        let a = format!("{}:{}", chord_node::constants::LOCALHOST, p);
         let i = hash_addr(&a);
 
         if Node::is_in_range_inclusive(key_id, node_a.id, i) {

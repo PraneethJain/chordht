@@ -18,7 +18,7 @@ async fn test_churn_and_concurrency() {
     let mut addresses: Vec<String> = Vec::new();
 
     for i in 0..3 {
-        let addr = format!("127.0.0.1:{}", 54000 + i);
+        let addr = format!("{}:{}", chord_node::constants::LOCALHOST, 54000 + i);
         let id = hash_addr(&addr);
         println!("Starting Node {} ({})", i, addr);
         let (node, handle) = start_node(id, addr.clone()).await;
@@ -105,7 +105,7 @@ async fn test_churn_and_concurrency() {
 
     println!("Adding 2 new nodes...");
     for i in 3..5 {
-        let addr = format!("127.0.0.1:{}", 54000 + i);
+        let addr = format!("{}:{}", chord_node::constants::LOCALHOST, 54000 + i);
         let id = hash_addr(&addr);
         println!("Starting Node {} ({})", i, addr);
         let (node, handle) = start_node(id, addr.clone()).await;

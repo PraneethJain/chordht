@@ -6,13 +6,17 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tonic::transport::Server;
 
+use chord_node::constants::{
+    CHECK_PREDECESSOR_INTERVAL_MS, DEFAULT_PORT, FIX_FINGERS_INTERVAL_MS, LOCALHOST,
+    MAINTAIN_REPLICATION_INTERVAL_MS, STABILIZATION_INTERVAL_MS,
+};
 use chord_node::Node;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Port to listen on
-    #[arg(short, long, default_value_t = 5000)]
+    #[arg(short, long, default_value_t = DEFAULT_PORT)]
     port: u16,
 
     /// Address of a node to join
@@ -31,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let args = Args::parse();
 
-    let addr_str = format!("127.0.0.1:{}", args.port);
+    let addr_str = format!("{}:{}", LOCALHOST, args.port);
     let addr: SocketAddr = addr_str.parse()?;
     let id = hash_addr(&addr_str);
 
@@ -52,10 +56,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let monitor_addr = args.monitor.clone();
     tokio::spawn(async move {
         loop {
-            sleep(Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(STABILIZATION_INTERVAL_MS)).await;
             node_clone.stabilize().await;
+            sleep(Duration::from_millis(FIX_FINGERS_INTERVAL_MS)).await;
             node_clone.fix_fingers().await;
+            sleep(Duration::from_millis(CHECK_PREDECESSOR_INTERVAL_MS)).await;
             node_clone.check_predecessor().await;
+            sleep(Duration::from_millis(MAINTAIN_REPLICATION_INTERVAL_MS)).await;
             node_clone.maintain_replication().await;
 
             if let Some(ref m_addr) = monitor_addr {

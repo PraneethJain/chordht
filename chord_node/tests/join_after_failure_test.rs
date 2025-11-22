@@ -6,9 +6,9 @@ use common::{stabilize_ring, start_node};
 
 #[tokio::test]
 async fn test_join_failure_after_node_departure() {
-    let addr1 = "127.0.0.1:51001".to_string();
-    let addr2 = "127.0.0.1:51002".to_string();
-    let addr3 = "127.0.0.1:51003".to_string();
+    let addr1 = format!("{}:51001", chord_node::constants::LOCALHOST);
+    let addr2 = format!("{}:51002", chord_node::constants::LOCALHOST);
+    let addr3 = format!("{}:51003", chord_node::constants::LOCALHOST);
 
     let id1 = hash_addr(&addr1);
     let id2 = hash_addr(&addr2);
@@ -45,7 +45,7 @@ async fn test_join_failure_after_node_departure() {
     println!("Stabilizing after node death...");
     stabilize_ring(&[node1.clone(), node3.clone()], 5).await;
 
-    let addr4 = "127.0.0.1:51004".to_string();
+    let addr4 = format!("{}:51004", chord_node::constants::LOCALHOST);
     let id4: u64 = 3000000000000000000;
     println!("Node 4: {} ({})", id4, addr4);
 

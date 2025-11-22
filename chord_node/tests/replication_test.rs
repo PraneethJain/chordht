@@ -18,7 +18,11 @@ async fn test_replication() {
     let mut handles = Vec::new();
 
     for i in 0..NUM_NODES {
-        let addr = format!("127.0.0.1:{}", BASE_PORT + i as u16);
+        let addr = format!(
+            "{}:{}",
+            chord_node::constants::LOCALHOST,
+            BASE_PORT + i as u16
+        );
         let id = hash_addr(&addr);
         addresses.push(addr.clone());
 
