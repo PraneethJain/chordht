@@ -122,7 +122,9 @@ We measured how the lookup cost scales with the network size. As shown in the gr
 ![Scalability Graph](chord_node/benchmark_results/scalability.png)
 
 ### 9.2 Load Balancing
-In a consistent hashing scheme without virtual nodes, load distribution can be uneven. Our benchmark (inserting 1000 keys into 20 nodes) confirmed this, showing a significant variance in the number of keys stored per node. While the average load was around 50 keys, some nodes held significantly more.
+In a consistent hashing scheme without virtual nodes, load distribution can be uneven. Our benchmark (inserting 1000 keys into 20 nodes) confirmed this, showing a significant variance in the number of keys stored per node. While the average load was around 50 keys (without replication), some nodes held significantly more. 
+
+With replication, some nodes showcased a higher load, leading to more variance, shifting the mean to around 150 keys per node. This is in tandem with the fact that the replication factor was 2 during our testing. 
 
 ![Load Balancing Graph](chord_node/benchmark_results/load_balancing.png)
 
@@ -138,5 +140,7 @@ We measured the time taken for a key to be fully replicated to its successors. T
 
 ## 10. Conclusion
 This project successfully implements a robust Chord DHT with replication and a comprehensive visualization suite. The system demonstrates the expected logarithmic scalability and handles dynamic node churn with graceful data handover. The addition of the monitoring tool proved essential for understanding the complex interactions within the distributed system.
+
+The current implementation prioritizes availability over consistency. This is to ensure that all the operations can take place almost instanteneously, without significant delay (as shown in our testing). This does lead to some minor inconsistencies, which are resolved eventually by the `stabilize_ring()` function, leading to eventual consistency. The current inconsistencies do not incorrect `GET` operations, but lead to extra replication. 
 
 Future improvements could include implementing virtual nodes to address the load balancing variance observed in our benchmarks.
