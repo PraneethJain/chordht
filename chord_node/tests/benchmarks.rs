@@ -79,8 +79,7 @@ async fn benchmark_scalability_hops() {
     println!("\n=== Benchmark 1: Scalability (Average Hops vs Network Size) ===");
     println!("Nodes,Avg_Hops");
 
-    // Use smaller sizes for faster CI feedback, but enough to show trend
-    let sizes = [5, 10, 15];
+    let sizes = [10, 20, 30, 40, 50];
 
     for &num_nodes in &sizes {
         let mut nodes = Vec::new();
@@ -125,8 +124,8 @@ async fn benchmark_scalability_hops() {
 #[tokio::test]
 async fn benchmark_load_balancing() {
     println!("\n=== Benchmark 2: Load Balancing (Key Distribution) ===");
-    const NUM_NODES: usize = 10;
-    const NUM_KEYS: usize = 500;
+    const NUM_NODES: usize = 20;
+    const NUM_KEYS: usize = 1000;
 
     let mut nodes = Vec::new();
     let mut addresses = Vec::new();
@@ -182,7 +181,7 @@ async fn benchmark_replication_delay() {
     stabilize_ring(&nodes, 20).await;
 
     println!("Trial,Delay_ms");
-    let num_trials = 5;
+    let num_trials = 20;
     let mut total_delay = 0.0;
 
     for i in 0..num_trials {
@@ -275,7 +274,7 @@ async fn benchmark_latency_cdf() {
     }
 
     println!("Latency_us");
-    let num_reqs = 50;
+    let num_reqs = 500;
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
