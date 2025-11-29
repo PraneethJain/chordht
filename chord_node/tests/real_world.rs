@@ -1,7 +1,7 @@
 use chord_proto::chord::chord_client::ChordClient;
 use chord_proto::chord::chord_server::Chord;
 use chord_proto::chord::{GetRequest, PutRequest};
-use chord_proto::hash_addr;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,10 +18,10 @@ async fn test_churn_and_concurrency() {
     let mut addresses: Vec<String> = Vec::new();
 
     for i in 0..3 {
-        let addr = format!("{}:{}", chord_node::constants::LOCALHOST, 54000 + i);
-        let id = hash_addr(&addr);
+        let (node, handle) = start_node("127.0.0.1:0".to_string()).await;
+        let addr = node.addr.clone();
+        let _id = node.id;
         println!("Starting Node {} ({})", i, addr);
-        let (node, handle) = start_node(id, addr.clone()).await;
 
         if i > 0 {
             node.join(addresses[0].clone())
@@ -104,20 +104,20 @@ async fn test_churn_and_concurrency() {
     });
 
     println!("Adding 2 new nodes...");
-    for i in 3..5 {
-        let addr = format!("{}:{}", chord_node::constants::LOCALHOST, 54000 + i);
-        let id = hash_addr(&addr);
-        println!("Starting Node {} ({})", i, addr);
-        let (node, handle) = start_node(id, addr.clone()).await;
+    const NUM_NODES_TO_ADD: usize = 2;
+    for i in 0..NUM_NODES_TO_ADD {
+        let (node, handle) = start_node("127.0.0.1:0".to_string()).await;
+        let addr = node.addr.clone();
+        let _id = node.id;
 
+        println!("Starting Node {} ({})", 3 + i, addr);
         node.join(addresses[0].clone())
             .await
             .expect("Failed to join");
 
         nodes.push(node);
         handles.push(handle);
-
-        addresses.push(addr);
+        addresses.push(addr.clone());
 
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
@@ -133,7 +133,6 @@ async fn test_churn_and_concurrency() {
     }
 
     println!("Stabilizing after kill...");
-    // Stabilize all remaining nodes
     let mut alive_nodes = Vec::new();
     for (i, node) in nodes.iter().enumerate() {
         if i != killed_index {

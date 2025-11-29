@@ -9,7 +9,6 @@ use common::{stabilize_ring, start_node};
 
 #[tokio::test]
 async fn test_replication() {
-    const BASE_PORT: u16 = 62000;
     const NUM_NODES: usize = 3;
 
     println!("Creating {} nodes for replication test...", NUM_NODES);
@@ -18,16 +17,14 @@ async fn test_replication() {
     let mut handles = Vec::new();
 
     for i in 0..NUM_NODES {
-        let addr = format!(
-            "{}:{}",
-            chord_node::constants::LOCALHOST,
-            BASE_PORT + i as u16
-        );
-        let id = hash_addr(&addr);
-        addresses.push(addr.clone());
+        let initial_addr = format!("{}:0", chord_node::constants::LOCALHOST);
 
-        println!("Node {}: {} ({})", i, id, addr);
-        let (node, handle) = start_node(id, addr).await;
+        let (node, handle) = start_node(initial_addr).await;
+        let actual_addr = node.addr.clone();
+        let id = node.id;
+        addresses.push(actual_addr.clone());
+
+        println!("Node {}: {} ({})", i, id, actual_addr);
         nodes.push(node);
         handles.push(handle);
     }

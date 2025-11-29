@@ -10,23 +10,18 @@ use common::{stabilize_ring, start_node};
 #[tokio::test]
 async fn test_large_chord_ring() {
     const NUM_NODES: usize = 20;
-    const BASE_PORT: u16 = 61000;
 
     println!("Creating {} nodes...", NUM_NODES);
     let mut nodes = Vec::new();
     let mut addresses = Vec::new();
 
     for i in 0..NUM_NODES {
-        let addr = format!(
-            "{}:{}",
-            chord_node::constants::LOCALHOST,
-            BASE_PORT + i as u16
-        );
-        let id = hash_addr(&addr);
+        let (node, _handle) = start_node("127.0.0.1:0".to_string()).await;
+        let addr = node.addr.clone();
+        let id = node.id;
         addresses.push(addr.clone());
 
         println!("Node {}: {} ({})", i, id, addr);
-        let (node, _handle) = start_node(id, addr).await;
         nodes.push(node);
 
         tokio::time::sleep(Duration::from_millis(50)).await;

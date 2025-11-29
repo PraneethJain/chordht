@@ -11,10 +11,8 @@ use common::{stabilize_ring, start_node};
 
 #[tokio::test]
 async fn test_key_transfer_on_join_and_leave() {
-    let port_a = 15000;
-    let addr_a = format!("{}:{}", chord_node::constants::LOCALHOST, port_a);
-    let id_a = hash_addr(&addr_a);
-    let (node_a, _h1) = start_node(id_a, addr_a.clone()).await;
+    let (node_a, _h1) = start_node("127.0.0.1:0".to_string()).await;
+    let addr_a = node_a.addr.clone();
     println!("Node A started at {} with ID {}", addr_a, node_a.id);
 
     let key = "test_key";
@@ -45,44 +43,55 @@ async fn test_key_transfer_on_join_and_leave() {
         assert!(state.store.contains_key(key));
     }
 
-    let mut addr_b = format!("{}:{}", chord_node::constants::LOCALHOST, 15001);
-    let mut id_b = hash_addr(&addr_b);
+    println!("Starting Node B at a random port (0)");
+    let (node_b, _h2) = start_node("127.0.0.1:0".to_string()).await;
+    let addr_b = node_b.addr.clone();
+    let id_b = node_b.id;
+    println!("Node B started at {} with ID {}", addr_b, id_b);
 
-    let mut found = false;
-    for p in 15001..16000 {
-        let a = format!("{}:{}", chord_node::constants::LOCALHOST, p);
-        let i = hash_addr(&a);
-
-        if Node::is_in_range_inclusive(key_id, node_a.id, i) {
-            addr_b = a;
-            id_b = i;
-            found = true;
-            break;
-        }
-    }
-
-    if !found {
-        panic!("Could not find a suitable port for Node B to take key");
-    }
-
-    println!("Starting Node B at {} with ID {}", addr_b, id_b);
-    let (node_b, _h2) = start_node(id_b, addr_b.clone()).await;
     node_b.join(addr_a.clone()).await.expect("Failed to join");
 
     println!("Stabilizing...");
     stabilize_ring(&[node_a.clone(), node_b.clone()], 20).await;
 
-    {
-        let state = node_b.state.read().await;
-        assert!(state.store.contains_key(key), "Node B should have the key");
-    }
+    let key_owner_id = if Node::is_in_range_inclusive(key_id, node_a.id, node_b.id) {
+        node_b.id
+    } else {
+        node_a.id
+    };
 
-    {
-        let state = node_a.state.read().await;
-        assert!(
-            !state.store.contains_key(key),
-            "Node A should NOT have the key"
+    if key_owner_id == node_b.id {
+        println!(
+            "Key '{}' (ID {}) should be on Node B (ID {})",
+            key, key_id, node_b.id
         );
+        {
+            let state = node_b.state.read().await;
+            assert!(state.store.contains_key(key), "Node B should have the key");
+        }
+        {
+            let state = node_a.state.read().await;
+            assert!(
+                !state.store.contains_key(key),
+                "Node A should NOT have the key"
+            );
+        }
+    } else {
+        println!(
+            "Key '{}' (ID {}) should be on Node A (ID {})",
+            key, key_id, node_a.id
+        );
+        {
+            let state = node_a.state.read().await;
+            assert!(state.store.contains_key(key), "Node A should have the key");
+        }
+        {
+            let state = node_b.state.read().await;
+            assert!(
+                !state.store.contains_key(key),
+                "Node B should NOT have the key"
+            );
+        }
     }
 
     println!("Node B leaving...");

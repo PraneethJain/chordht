@@ -8,16 +8,20 @@ use tonic::transport::Server;
 
 /// Helper to start a node in a background task.
 /// Returns the Node Arc and a JoinHandle to the server task (allowing it to be aborted).
-pub async fn start_node(id: u64, addr: String) -> (Arc<Node>, tokio::task::JoinHandle<()>) {
-    let node = Node::new(id, addr.clone());
+pub async fn start_node(addr: String) -> (Arc<Node>, tokio::task::JoinHandle<()>) {
+    let addr: SocketAddr = addr.parse().unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let local_addr = listener.local_addr().unwrap();
+    let local_addr_str = local_addr.to_string();
+
+    // Calculate ID based on the actual bound address
+    let id = chord_proto::hash_addr(&local_addr_str);
+
+    let node = Node::new(id, local_addr_str.clone());
     let node = Arc::new(node);
     let node_clone = node.clone();
-    let addr_clone = addr.clone();
 
     let handle = tokio::spawn(async move {
-        let addr: SocketAddr = addr_clone.parse().unwrap();
-        let listener = TcpListener::bind(addr).await.unwrap();
-
         Server::builder()
             .add_service(ChordServer::new((*node_clone).clone()))
             .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))

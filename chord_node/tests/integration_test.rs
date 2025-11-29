@@ -8,27 +8,22 @@ use common::{stabilize_ring, start_node};
 
 #[tokio::test]
 async fn test_chord_ring_formation_and_routing() {
-    let addr1 = format!("{}:60001", chord_node::constants::LOCALHOST);
-    let addr2 = format!("{}:60002", chord_node::constants::LOCALHOST);
-    let addr3 = format!("{}:60003", chord_node::constants::LOCALHOST);
+    let (node1, _h1) = start_node("127.0.0.1:0".to_string()).await;
+    let addr1 = node1.addr.clone();
+    let (node2, _h2) = start_node("127.0.0.1:0".to_string()).await;
+    let addr2 = node2.addr.clone();
+    let (node3, _h3) = start_node("127.0.0.1:0".to_string()).await;
+    let addr3 = node3.addr.clone();
 
-    let id1 = hash_addr(&addr1);
-    let id2 = hash_addr(&addr2);
-    let id3 = hash_addr(&addr3);
+    println!("Node 1: {} ({})", node1.id, addr1);
+    println!("Node 2: {} ({})", node2.id, addr2);
+    println!("Node 3: {} ({})", node3.id, addr3);
 
-    println!("Node 1: {} ({})", id1, addr1);
-    println!("Node 2: {} ({})", id2, addr2);
-    println!("Node 3: {} ({})", id3, addr3);
-
-    let (node1, _h1) = start_node(id1, addr1.clone()).await;
-
-    let (node2, _h2) = start_node(id2, addr2.clone()).await;
     node2
         .join(addr1.clone())
         .await
         .expect("Node 2 failed to join Node 1");
 
-    let (node3, _h3) = start_node(id3, addr3.clone()).await;
     node3
         .join(addr1.clone())
         .await
@@ -57,7 +52,6 @@ async fn test_chord_ring_formation_and_routing() {
     use chord_proto::chord::chord_server::Chord;
     node1.put(put_req).await.expect("Put failed");
 
-    // Get from Node 3
     println!("Getting key from Node 3...");
     let get_req = Request::new(GetRequest {
         key: key.to_string(),
