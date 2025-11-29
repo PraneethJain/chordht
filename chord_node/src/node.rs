@@ -382,13 +382,6 @@ impl Node {
         Ok(response.into_inner())
     }
 
-    async fn ping_rpc(&self, addr: String) -> Result<(), Status> {
-        let mut client = self.connect_rpc(addr).await?;
-        let request = Request::new(Empty {});
-        client.ping(request).await?;
-        Ok(())
-    }
-
     pub async fn report_to_monitor(&self, monitor_addr: String) {
         use chord_proto::chord::chord_monitor_client::ChordMonitorClient;
         let state = self.state.read().await;
