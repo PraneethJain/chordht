@@ -163,6 +163,61 @@ async fn benchmark_load_balancing() {
 }
 
 #[tokio::test]
+async fn benchmark_concurrent_throughput() {
+    println!("\n=== Benchmark 3: Concurrent Throughput ===");
+    println!("Clients,Ops_Per_Sec");
+
+    const NUM_NODES: usize = 10;
+    let mut nodes = Vec::new();
+    let mut addresses = Vec::new();
+
+    for _ in 0..NUM_NODES {
+        let (node, _handle) = start_node("127.0.0.1:0".to_string()).await;
+        addresses.push(node.addr.clone());
+        nodes.push(node);
+    }
+    for node in nodes.iter().take(NUM_NODES).skip(1) {
+        node.join(addresses[0].clone()).await.unwrap();
+    }
+    stabilize_ring(&nodes, 20).await;
+
+    let client_counts = [1, 5, 10, 15, 20, 25, 30, 35, 40];
+    let ops_per_client = 100;
+
+    for &num_clients in &client_counts {
+        let mut handles = Vec::new();
+        let start = Instant::now();
+
+        for i in 0..num_clients {
+            let node = nodes[i % NUM_NODES].clone();
+            let handle = tokio::spawn(async move {
+                for j in 0..ops_per_client {
+                    let key = format!("client_{}_key_{}", i, j);
+                    let _ = node
+                        .put(Request::new(PutRequest {
+                            key: key.clone(),
+                            value: "val".to_string(),
+                        }))
+                        .await;
+                    let _ = node.get(Request::new(GetRequest { key })).await;
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        let duration = start.elapsed();
+        let total_ops = num_clients * ops_per_client * 2; // put + get
+        let ops_per_sec = total_ops as f64 / duration.as_secs_f64();
+
+        println!("{},{:.2}", num_clients, ops_per_sec);
+    }
+}
+
+#[tokio::test]
 async fn benchmark_replication_delay() {
     println!("\n=== Benchmark 4: Replication Delay ===");
     const NUM_NODES: usize = 5;

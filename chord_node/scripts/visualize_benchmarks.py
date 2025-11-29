@@ -121,6 +121,31 @@ def plot_latency_cdf(df, output_dir):
     plt.savefig(os.path.join(output_dir, 'latency_cdf.png'))
     plt.close()
 
+def parse_concurrent_throughput(output):
+    print("Parsing Concurrent Throughput Benchmark...")
+    match = re.search(r"=== Benchmark 3: Concurrent Throughput .*?===\n[\s\S]*?(Clients,Ops_Per_Sec\n[\s\S]*?)(?=\n===|$)", output)
+    if match:
+        data_str = match.group(1)
+        lines = [line for line in data_str.split('\n') if line.strip() and (line.startswith('Clients') or line[0].isdigit())]
+        df = pd.read_csv(io.StringIO('\n'.join(lines)))
+        return df
+    return None
+
+def plot_concurrent_throughput(df, output_dir):
+    if df is None or df.empty:
+        print("No data for Concurrent Throughput")
+        return
+
+    plt.figure(figsize=(10, 6))
+    sns.lineplot(data=df, x='Clients', y='Ops_Per_Sec', marker='o')
+    plt.title('Concurrent Throughput vs Number of Clients')
+    plt.xlabel('Number of Concurrent Clients')
+    plt.ylabel('Throughput (Operations per Second)')
+    plt.ylim(bottom=0)
+    plt.grid(True)
+    plt.savefig(os.path.join(output_dir, 'concurrent_throughput.png'))
+    plt.close()
+
 def main():
     output_dir = "../benchmark_results"
     os.makedirs(output_dir, exist_ok=True)
@@ -134,6 +159,9 @@ def main():
 
     df_load = parse_load_balancing(output)
     plot_load_balancing(df_load, output_dir)
+
+    df_throughput = parse_concurrent_throughput(output)
+    plot_concurrent_throughput(df_throughput, output_dir)
 
     df_rep = parse_replication_delay(output)
     plot_replication_delay(df_rep, output_dir)

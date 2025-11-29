@@ -13,16 +13,25 @@ This confirms that the Chord protocol is scaling correctly. The values are sligh
 ![Load Balancing](load_balancing.png)
 
 The key distribution shows significant variance, which is expected in consistent hashing without virtual nodes.
-- **Max Keys**: 406
-- **Min Keys**: 14
+- **Max Keys**: 302
+- **Min Keys**: 43
 - **Average**: ~50
 
-This imbalance highlights why production Chord implementations use "virtual nodes" to spread keys more evenly.
+This imbalance (some nodes holding ~6x the average) highlights why production Chord implementations use "virtual nodes" to spread keys more evenly.
+
+## Concurrent Throughput
+![Concurrent Throughput](concurrent_throughput.png)
+
+The system throughput remains relatively stable as the number of concurrent clients increases, hovering around **110-118 ops/sec**.
+- **1 Client**: ~117.50 ops/sec
+- **40 Clients**: ~110.99 ops/sec
+
+This suggests that for this specific test setup (running on a single machine), the bottleneck might be the processing power rather than lock contention, as adding more clients doesn't significantly degrade (or improve) the total throughput. It indicates the system handles concurrency gracefully.
 
 ## Replication Delay
 ![Replication Delay](replication_delay.png)
 
-Replication is consistently fast, averaging around **6.15 ms**.
+Replication is consistently fast, averaging around **5.80 ms**.
 - **Range**: 3ms - 9ms
 
 This indicates that the `maintain_replication` background task is responsive and effectively propagating changes to successors.
